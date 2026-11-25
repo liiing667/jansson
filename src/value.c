@@ -143,6 +143,28 @@ int json_object_setn_new_nocheck(json_t *json, const char *key, size_t key_len,
     return 0;
 }
 
+static int json_object_setn_nocheck_with_undo(json_t *json, const char *key,
+                                              size_t key_len, json_t *value,
+                                              hashtable_update_entry_t **undo) {
+    json_object_t *object;
+
+    if (!value)
+        return -1;
+
+    if (!key || !json_is_object(json) || json == value)
+        return -1;
+
+    object = json_to_object(json);
+    json_incref(value);
+
+    if (hashtable_set_with_undo(&object->hashtable, key, key_len, value, undo)) {
+        json_decref(value);
+        return -1;
+    }
+
+    return 0;
+}
+
 int json_object_set_new(json_t *json, const char *key, json_t *value) {
     if (!key) {
         json_decref(value);
@@ -194,51 +216,81 @@ int json_object_update(json_t *object, json_t *other) {
     const char *key;
     size_t key_len;
     json_t *value;
+    hashtable_update_entry_t *undo = NULL;
+    int res = 0;
 
     if (!json_is_object(object) || !json_is_object(other))
         return -1;
 
     json_object_keylen_foreach(other, key, key_len, value) {
-        if (json_object_setn_nocheck(object, key, key_len, value))
-            return -1;
+        if (json_object_setn_nocheck_with_undo(object, key, key_len, value, &undo)) {
+            res = -1;
+            break;
+        }
     }
 
-    return 0;
+    if (res)
+        hashtable_update_rollback(undo);
+    else
+        hashtable_update_commit(undo);
+
+    return res;
 }
 
 int json_object_update_existing(json_t *object, json_t *other) {
     const char *key;
     size_t key_len;
     json_t *value;
+    hashtable_update_entry_t *undo = NULL;
+    int res = 0;
 
     if (!json_is_object(object) || !json_is_object(other))
         return -1;
 
     json_object_keylen_foreach(other, key, key_len, value) {
-        if (json_object_getn(object, key, key_len))
-            json_object_setn_nocheck(object, key, key_len, value);
+        if (json_object_getn(object, key, key_len) &&
+            json_object_setn_nocheck_with_undo(object, key, key_len, value, &undo)) {
+            res = -1;
+            break;
+        }
     }
 
-    return 0;
+    if (res)
+        hashtable_update_rollback(undo);
+    else
+        hashtable_update_commit(undo);
+
+    return res;
 }
 
 int json_object_update_missing(json_t *object, json_t *other) {
     const char *key;
     size_t key_len;
     json_t *value;
+    hashtable_update_entry_t *undo = NULL;
+    int res = 0;
 
     if (!json_is_object(object) || !json_is_object(other))
         return -1;
 
     json_object_keylen_foreach(other, key, key_len, value) {
-        if (!json_object_getn(object, key, key_len))
-            json_object_setn_nocheck(object, key, key_len, value);
+        if (!json_object_getn(object, key, key_len) &&
+            json_object_setn_nocheck_with_undo(object, key, key_len, value, &undo)) {
+            res = -1;
+            break;
+        }
     }
 
-    return 0;
+    if (res)
+        hashtable_update_rollback(undo);
+    else
+        hashtable_update_commit(undo);
+
+    return res;
 }
 
-int do_object_update_recursive(json_t *object, json_t *other, hashtable_t *parents) {
+int do_object_update_recursive(json_t *object, json_t *other, hashtable_t *parents,
+                               hashtable_update_entry_t **undo) {
     const char *key;
     size_t key_len;
     json_t *value;
@@ -256,12 +308,12 @@ int do_object_update_recursive(json_t *object, json_t *other, hashtable_t *paren
         json_t *v = json_object_getn(object, key, key_len);
 
         if (json_is_object(v) && json_is_object(value)) {
-            if (do_object_update_recursive(v, value, parents)) {
+            if (do_object_update_recursive(v, value, parents, undo)) {
                 res = -1;
                 break;
             }
         } else {
-            if (json_object_setn_nocheck(object, key, key_len, value)) {
+            if (json_object_setn_nocheck_with_undo(object, key, key_len, value, undo)) {
                 res = -1;
                 break;
             }
@@ -276,11 +328,17 @@ int do_object_update_recursive(json_t *object, json_t *other, hashtable_t *paren
 int json_object_update_recursive(json_t *object, json_t *other) {
     int res;
     hashtable_t parents_set;
+    hashtable_update_entry_t *undo = NULL;
 
     if (hashtable_init(&parents_set))
         return -1;
-    res = do_object_update_recursive(object, other, &parents_set);
+    res = do_object_update_recursive(object, other, &parents_set, &undo);
     hashtable_close(&parents_set);
+
+    if (res)
+        hashtable_update_rollback(undo);
+    else
+        hashtable_update_commit(undo);
 
     return res;
 }

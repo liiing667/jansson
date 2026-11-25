@@ -41,6 +41,8 @@ typedef struct hashtable {
     struct hashtable_list ordered_list;
 } hashtable_t;
 
+typedef struct hashtable_update_entry hashtable_update_entry_t;
+
 #define hashtable_key_to_iter(key_)                                                      \
     (&(container_of(key_, struct hashtable_pair, key)->ordered_list))
 
@@ -81,6 +83,43 @@ void hashtable_close(hashtable_t *hashtable);
  * Returns 0 on success, -1 on failure (out of memory).
  */
 int hashtable_set(hashtable_t *hashtable, const char *key, size_t key_len, json_t *value);
+
+/**
+ * hashtable_set_with_undo - Add/modify a value and record how to undo it
+ *
+ * @hashtable: The hashtable object
+ * @key: The key
+ * @key_len: The length of key
+ * @value: The value, whose reference is stolen on success
+ * @undo: The undo list to append to
+ *
+ * Like hashtable_set(), but appends an entry to *undo that can be used to
+ * revert the change. The value reference is stolen only if the function
+ * succeeds. On failure the hashtable and *undo are left unchanged.
+ *
+ * Returns 0 on success, -1 on failure (out of memory).
+ */
+int hashtable_set_with_undo(hashtable_t *hashtable, const char *key, size_t key_len,
+                            json_t *value, hashtable_update_entry_t **undo);
+
+/**
+ * hashtable_update_rollback - Revert a list of hashtable changes
+ *
+ * @undo: The undo list
+ *
+ * Reverts all changes recorded in @undo in reverse order and frees the list.
+ */
+void hashtable_update_rollback(hashtable_update_entry_t *undo);
+
+/**
+ * hashtable_update_commit - Accept a list of hashtable changes
+ *
+ * @undo: The undo list
+ *
+ * Releases the resources needed to revert the recorded changes and frees the
+ * list. The changes themselves are kept.
+ */
+void hashtable_update_commit(hashtable_update_entry_t *undo);
 
 /**
  * hashtable_get - Get a value associated with a key

@@ -28,6 +28,14 @@ typedef struct hashtable_list list_t;
 typedef struct hashtable_pair pair_t;
 typedef struct hashtable_bucket bucket_t;
 
+struct hashtable_update_entry {
+    struct hashtable_update_entry *next;
+    hashtable_t *hashtable;
+    pair_t *pair;
+    json_t *old_value;
+    int inserted;
+};
+
 extern volatile uint32_t hashtable_seed;
 
 /* Implementation of the hash function */
@@ -255,6 +263,83 @@ int hashtable_set(hashtable_t *hashtable, const char *key, size_t key_len,
         hashtable->size++;
     }
     return 0;
+}
+
+int hashtable_set_with_undo(hashtable_t *hashtable, const char *key, size_t key_len,
+                            json_t *value, hashtable_update_entry_t **undo) {
+    hashtable_update_entry_t *entry;
+    pair_t *pair;
+    bucket_t *bucket;
+    size_t hash, index;
+
+    /* rehash if the load ratio exceeds 1 */
+    if (hashtable->size >= hashsize(hashtable->order))
+        if (hashtable_do_rehash(hashtable))
+            return -1;
+
+    hash = hash_str(key, key_len);
+    index = hash & hashmask(hashtable->order);
+    bucket = &hashtable->buckets[index];
+    pair = hashtable_find_pair(hashtable, bucket, key, key_len, hash);
+
+    entry = jsonp_malloc(sizeof(hashtable_update_entry_t));
+    if (!entry)
+        return -1;
+
+    entry->next = *undo;
+    entry->hashtable = hashtable;
+    entry->pair = pair;
+    entry->old_value = NULL;
+    entry->inserted = pair == NULL;
+
+    if (pair) {
+        entry->old_value = json_incref(pair->value);
+        json_decref(pair->value);
+        pair->value = value;
+    } else {
+        pair = init_pair(value, key, key_len, hash);
+        if (!pair) {
+            jsonp_free(entry);
+            return -1;
+        }
+
+        entry->pair = pair;
+        insert_to_bucket(hashtable, bucket, &pair->list);
+        list_insert(&hashtable->ordered_list, &pair->ordered_list);
+        hashtable->size++;
+    }
+
+    *undo = entry;
+    return 0;
+}
+
+void hashtable_update_rollback(hashtable_update_entry_t *undo) {
+    while (undo) {
+        hashtable_update_entry_t *next = undo->next;
+
+        if (undo->inserted) {
+            hashtable_do_del(undo->hashtable, undo->pair->key, undo->pair->key_len,
+                             undo->pair->hash);
+        } else {
+            json_decref(undo->pair->value);
+            undo->pair->value = undo->old_value;
+        }
+
+        jsonp_free(undo);
+        undo = next;
+    }
+}
+
+void hashtable_update_commit(hashtable_update_entry_t *undo) {
+    while (undo) {
+        hashtable_update_entry_t *next = undo->next;
+
+        if (!undo->inserted)
+            json_decref(undo->old_value);
+
+        jsonp_free(undo);
+        undo = next;
+    }
 }
 
 void *hashtable_get(hashtable_t *hashtable, const char *key, size_t key_len) {
