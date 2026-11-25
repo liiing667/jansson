@@ -224,6 +224,95 @@ static void error_code() {
         fail("json_loads returned incorrect error code");
 }
 
+/* Build text made of `depth` repeated open/close characters. */
+static char *nested_text(char open, char close, int depth) {
+    char *text = malloc((size_t)depth * 2 + 1);
+    int i;
+    if (!text)
+        fail("malloc failed");
+    for (i = 0; i < depth; i++)
+        text[i] = open;
+    for (i = 0; i < depth; i++)
+        text[depth + i] = close;
+    text[depth * 2] = '\0';
+    return text;
+}
+
+/* Build `depth` nested objects, each holding one member "a". */
+static char *nested_object_text(int depth) {
+    char *text = malloc((size_t)(depth - 1) * 5 + (size_t)depth + 2);
+    int i, pos = 0;
+    if (!text)
+        fail("malloc failed");
+    /* `depth` nested objects: depth-1 wrappers {"a": ... } plus an
+       innermost empty object. */
+    for (i = 1; i < depth; i++) {
+        memcpy(text + pos, "{\"a\":", 5);
+        pos += 5;
+    }
+    text[pos++] = '{';
+    for (i = 0; i < depth; i++)
+        text[pos++] = '}';
+    text[pos] = '\0';
+    return text;
+}
+
+static void max_depth() {
+    json_error_t error;
+    json_t *json;
+    char *text;
+
+    /* Structures nested exactly to the limit must be accepted, and the
+       accepted values must remain usable by every recursive consumer so
+       that loading and re-exporting agree on the same boundary. */
+    text = nested_text('[', ']', JSON_PARSER_MAX_DEPTH);
+    json = json_loads(text, 0, &error);
+    if (!json)
+        fail("json_loads rejected an array within the depth limit");
+    if (!json_dumps(json, JSON_COMPACT))
+        fail("json_dumps failed for an array within the depth limit");
+    if (!json_deep_copy(json))
+        fail("json_deep_copy failed for an array within the depth limit");
+    json_decref(json);
+    free(text);
+
+    text = nested_object_text(JSON_PARSER_MAX_DEPTH);
+    json = json_loads(text, 0, &error);
+    if (!json)
+        fail("json_loads rejected an object within the depth limit");
+    if (!json_dumps(json, JSON_COMPACT))
+        fail("json_dumps failed for an object within the depth limit");
+    if (!json_deep_copy(json))
+        fail("json_deep_copy failed for an object within the depth limit");
+    json_decref(json);
+    free(text);
+
+    /* One level beyond the limit both arrays and objects must fail
+       closed with the stack-overflow error code. Before the fix the
+       parser counted parse_value() calls, so objects were rejected one
+       nesting level earlier than arrays, and arrays exactly at the
+       limit were accepted only to fail when re-exported. */
+    text = nested_text('[', ']', JSON_PARSER_MAX_DEPTH + 1);
+    json = json_loads(text, 0, &error);
+    if (json) {
+        json_decref(json);
+        fail("json_loads accepted an array beyond the maximum parsing depth");
+    }
+    if (json_error_code(&error) != json_error_stack_overflow)
+        fail("json_loads returned an incorrect error code for deep array");
+    free(text);
+
+    text = nested_object_text(JSON_PARSER_MAX_DEPTH + 1);
+    json = json_loads(text, 0, &error);
+    if (json) {
+        json_decref(json);
+        fail("json_loads accepted an object beyond the maximum parsing depth");
+    }
+    if (json_error_code(&error) != json_error_stack_overflow)
+        fail("json_loads returned an incorrect error code for deep object");
+    free(text);
+}
+
 static void run_tests() {
     file_not_found();
     very_long_file_name();
@@ -235,4 +324,5 @@ static void run_tests() {
     load_wrong_args();
     position();
     error_code();
+    max_depth();
 }

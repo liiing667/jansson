@@ -665,9 +665,22 @@ static json_t *parse_object(lex_t *lex, size_t flags, json_error_t *error) {
     if (!object)
         return NULL;
 
+    /* Count structural nesting levels, exactly like the recursive
+       consumers (json_dump, json_equal, json_deep_copy) count their
+       `depth` argument, so that arrays and objects hit the same limit
+       and every value accepted here can also be re-exported. The
+       strictly-greater check lets JSON_PARSER_MAX_DEPTH nesting levels
+       through; the consumers start their recursion at depth 0 and bail
+       out at depth >= JSON_PARSER_MAX_DEPTH, i.e. at the next level. */
+    lex->depth++;
+    if (lex->depth > JSON_PARSER_MAX_DEPTH) {
+        error_set(error, lex, json_error_stack_overflow, "maximum parsing depth reached");
+        goto error;
+    }
+
     lex_scan(lex, error);
     if (lex->token == '}')
-        return object;
+        goto out;
 
     while (1) {
         char *key;
@@ -681,7 +694,7 @@ static json_t *parse_object(lex_t *lex, size_t flags, json_error_t *error) {
 
         key = lex_steal_string(lex, &len);
         if (!key)
-            return NULL;
+            goto error;
         if (memchr(key, '\0', len)) {
             jsonp_free(key);
             error_set(error, lex, json_error_null_byte_in_key,
@@ -730,9 +743,12 @@ static json_t *parse_object(lex_t *lex, size_t flags, json_error_t *error) {
         goto error;
     }
 
+out:
+    lex->depth--;
     return object;
 
 error:
+    lex->depth--;
     json_decref(object);
     return NULL;
 }
@@ -742,9 +758,16 @@ static json_t *parse_array(lex_t *lex, size_t flags, json_error_t *error) {
     if (!array)
         return NULL;
 
+    /* See the matching comment in parse_object(). */
+    lex->depth++;
+    if (lex->depth > JSON_PARSER_MAX_DEPTH) {
+        error_set(error, lex, json_error_stack_overflow, "maximum parsing depth reached");
+        goto error;
+    }
+
     lex_scan(lex, error);
     if (lex->token == ']')
-        return array;
+        goto out;
 
     while (lex->token) {
         json_t *elem = parse_value(lex, flags, error);
@@ -767,21 +790,18 @@ static json_t *parse_array(lex_t *lex, size_t flags, json_error_t *error) {
         goto error;
     }
 
+out:
+    lex->depth--;
     return array;
 
 error:
+    lex->depth--;
     json_decref(array);
     return NULL;
 }
 
 static json_t *parse_value(lex_t *lex, size_t flags, json_error_t *error) {
     json_t *json;
-
-    lex->depth++;
-    if (lex->depth > JSON_PARSER_MAX_DEPTH) {
-        error_set(error, lex, json_error_stack_overflow, "maximum parsing depth reached");
-        return NULL;
-    }
 
     switch (lex->token) {
         case TOKEN_STRING: {
@@ -844,7 +864,6 @@ static json_t *parse_value(lex_t *lex, size_t flags, json_error_t *error) {
     if (!json)
         return NULL;
 
-    lex->depth--;
     return json;
 }
 
