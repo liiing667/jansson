@@ -164,6 +164,19 @@ static void allow_nul() {
     json_decref(json);
 }
 
+static void string_input_keeps_nul_termination() {
+    static const char text[] = {'[', '1', ']', '\0', '2'};
+    json_error_t error;
+    json_t *json;
+
+    json = json_loads(text, 0, &error);
+    if (!json)
+        fail("json_loads should keep honoring NUL termination");
+    if (error.position != 3)
+        fail("json_loads returned an incorrect position for an embedded NUL");
+    json_decref(json);
+}
+
 static void load_wrong_args() {
     json_t *json;
     json_error_t error;
@@ -232,6 +245,7 @@ static void run_tests() {
     decode_any();
     decode_int_as_real();
     allow_nul();
+    string_input_keeps_nul_termination();
     load_wrong_args();
     position();
     error_code();

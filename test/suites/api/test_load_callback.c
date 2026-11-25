@@ -14,6 +14,7 @@ struct my_source {
     const char *buf;
     size_t off;
     size_t cap;
+    size_t chunk_size;
 };
 
 static const char my_str[] = "[\"A\", {\"B\": \"C\", \"e\": false}, 1, null, \"foo\"]";
@@ -29,6 +30,84 @@ static size_t greedy_reader(void *buf, size_t buflen, void *arg) {
     } else {
         return 0;
     }
+}
+
+static size_t chunk_reader(void *buf, size_t buflen, void *arg) {
+    struct my_source *s = arg;
+    size_t len = s->chunk_size;
+
+    if (len > buflen)
+        len = buflen;
+    if (len > s->cap - s->off)
+        len = s->cap - s->off;
+
+    memcpy(buf, s->buf + s->off, len);
+    s->off += len;
+    return len;
+}
+
+static void embedded_nul_is_not_eof() {
+    static const char input[] = {'[', '1', '\0', ']'};
+    const size_t len = sizeof(input);
+    json_error_t buffer_error;
+    json_error_t callback_error;
+    json_t *buffer_json;
+    json_t *callback_json;
+    struct my_source source;
+    size_t chunk_size;
+
+    buffer_json = json_loadb(input, len, 0, &buffer_error);
+    if (buffer_json) {
+        json_decref(buffer_json);
+        fail("json_loadb accepted an embedded NUL byte");
+    }
+
+    for (chunk_size = 1; chunk_size <= len; chunk_size++) {
+        source.buf = input;
+        source.off = 0;
+        source.cap = len;
+        source.chunk_size = chunk_size;
+
+        callback_json = json_load_callback(chunk_reader, &source, 0, &callback_error);
+        if (callback_json) {
+            json_decref(callback_json);
+            fail("json_load_callback treated an embedded NUL byte as EOF");
+        }
+
+        if (callback_error.position != buffer_error.position ||
+            strcmp(callback_error.text, buffer_error.text) != 0) {
+            fail("json_load_callback and json_loadb disagreed on an embedded "
+                 "NUL byte");
+        }
+    }
+}
+
+static void chunked_reading_matches_buffer() {
+    struct my_source source;
+    json_error_t callback_error;
+    json_t *callback_json;
+    json_t *buffer_json;
+    size_t chunk_size;
+
+    buffer_json = json_loadb(my_str, strlen(my_str), 0, &callback_error);
+    if (!buffer_json)
+        fail("json_loadb failed on valid callback input");
+
+    for (chunk_size = 1; chunk_size <= strlen(my_str); chunk_size++) {
+        source.buf = my_str;
+        source.off = 0;
+        source.cap = strlen(my_str);
+        source.chunk_size = chunk_size;
+
+        callback_json = json_load_callback(chunk_reader, &source, 0, &callback_error);
+        if (!callback_json)
+            fail("json_load_callback failed on valid chunked input");
+        if (!json_equal(callback_json, buffer_json))
+            fail("json_load_callback returned different data from json_loadb");
+        json_decref(callback_json);
+    }
+
+    json_decref(buffer_json);
 }
 
 static void run_tests() {
@@ -74,4 +153,7 @@ static void run_tests() {
         fail("json_load_callback returned an invalid error message for a NULL "
              "load callback");
     }
+
+    chunked_reading_matches_buffer();
+    embedded_nul_is_not_eof();
 }

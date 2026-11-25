@@ -155,6 +155,8 @@ static int stream_get(stream_t *stream, json_error_t *error) {
     if (stream->state != STREAM_STATE_OK)
         return stream->state;
 
+    /* A NUL byte is ordinary input; only an exhausted, zero-length buffer
+     * requests another byte from the underlying stream. */
     if (stream->buffer_pos == stream->buffer_len) {
         c = stream->get(stream->data);
         if (c == EOF) {
@@ -1073,8 +1075,11 @@ static int callback_get(void *data) {
     if (stream->pos >= stream->len) {
         stream->pos = 0;
         stream->len = stream->callback(stream->data, MAX_BUF_LEN, stream->arg);
-        if (stream->len == 0 || stream->len == (size_t)-1)
+        if (stream->len == 0 || stream->len == (size_t)-1) {
+            /* Keep the empty boundary distinct from a callback chunk that
+             * legitimately contains a NUL byte. */
             return EOF;
+        }
     }
 
     c = stream->data[stream->pos];
