@@ -626,8 +626,12 @@ Object
 A JSON object is a dictionary of key-value pairs, where the key is a
 Unicode string and the value is any JSON value.
 
-Even though null bytes are allowed in string values, they are not
-allowed in object keys.
+Null bytes in object keys are preserved by the length-aware object
+APIs described in :ref:`fixed_length_keys`.  The decoder rejects such
+keys by default; pass ``JSON_ALLOW_NUL`` to accept their escaped
+``\u0000`` form.  Ordinary null-terminated key APIs cannot see past the
+embedded null byte, so :c:func:`json_object_getn` and the
+length-aware iteration macros must be used for such keys.
 
 .. function:: json_t *json_object(void)
 
@@ -1066,8 +1070,9 @@ in which case no error information is returned to the caller.
 
    ``json_error_null_byte_in_key``
 
-       An object key would contain a null byte.  Jansson can’t represent such
-       keys; see :ref:`rfc-conformance`.
+       An object key contains a null byte while ``JSON_ALLOW_NUL`` was not
+       specified.  Length-aware APIs can represent such keys when decoding
+       is performed with ``JSON_ALLOW_NUL``.
 
    ``json_error_duplicate_key``
 
@@ -1355,8 +1360,10 @@ macros can be ORed together to obtain *flags*.
    using e.g. :func:`json_stringn()` or ``s#`` format specifier for
    :func:`json_pack()`.
 
-   Object keys cannot have embedded null bytes even if this flag is
-   used.
+   This flag also allows escaped null bytes in object keys. Their full
+   byte length is preserved, so they remain distinct keys when accessed
+   through the fixed-length object APIs. Ordinary null-terminated key
+   APIs only see the bytes before the first null byte.
 
    .. versionadded:: 2.6
 

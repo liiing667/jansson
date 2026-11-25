@@ -682,7 +682,7 @@ static json_t *parse_object(lex_t *lex, size_t flags, json_error_t *error) {
         key = lex_steal_string(lex, &len);
         if (!key)
             return NULL;
-        if (memchr(key, '\0', len)) {
+        if (!(flags & JSON_ALLOW_NUL) && memchr(key, '\0', len)) {
             jsonp_free(key);
             error_set(error, lex, json_error_null_byte_in_key,
                       "NUL byte in object key not supported");
