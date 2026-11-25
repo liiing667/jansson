@@ -12,6 +12,7 @@
 #include "jansson_private.h"
 
 #include <assert.h>
+#include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -466,9 +467,83 @@ int json_dumpfd(const json_t *json, int output, size_t flags) {
 }
 
 int json_dump_file(const json_t *json, const char *path, size_t flags) {
-    int result;
+    int result = -1;
 
-    FILE *output = fopen(path, "w");
+#ifdef HAVE_UNISTD_H
+    const char *slash;
+    size_t dir_len, path_len;
+    char *tmp_path;
+    int fd;
+    FILE *output;
+#else
+    FILE *output;
+#endif
+
+    if (!path)
+        return -1;
+
+#ifdef HAVE_UNISTD_H
+    /*
+     * Write to a temporary file in the same directory as the destination and
+     * publish it with rename(2), which is atomic. This way an independent
+     * reader can never observe a half-written or truncated file: the file
+     * visible at 'path' always belongs to a fully completed generation, so
+     * its contents match the result published by this function. The previous
+     * file is left untouched if anything fails before the rename.
+     */
+    slash = strrchr(path, '/');
+    dir_len = slash ? (size_t)(slash - path) + 1 : 0;
+    path_len = strlen(path);
+    /* directory prefix + basename + ".XXXXXX" + terminating NUL */
+    tmp_path = jsonp_malloc(dir_len + (path_len - dir_len) + 8);
+
+    if (!tmp_path)
+        return -1;
+
+    memcpy(tmp_path, path, path_len);
+    memcpy(tmp_path + path_len, ".XXXXXX", 8);
+
+    fd = mkstemp(tmp_path);
+    if (fd == -1) {
+        jsonp_free(tmp_path);
+        return -1;
+    }
+
+    output = fdopen(fd, "w");
+    if (!output) {
+        close(fd);
+        unlink(tmp_path);
+        jsonp_free(tmp_path);
+        return -1;
+    }
+
+    result = json_dumpf(json, output, flags);
+
+    if (fclose(output) != 0)
+        result = -1;
+
+    if (result == 0) {
+        /* Make sure the new generation is on stable storage before it is
+         * published, so that the rename cannot expose unwritten data. */
+        fd = open(tmp_path, O_RDONLY);
+        if (fd != -1) {
+            if (fsync(fd) != 0)
+                result = -1;
+            close(fd);
+        }
+    }
+
+    if (result == 0 && rename(tmp_path, path) != 0)
+        result = -1;
+
+    if (result != 0)
+        unlink(tmp_path);
+
+    jsonp_free(tmp_path);
+    return result;
+#else
+    /* No atomic rename available: fall back to overwriting the file. */
+    output = fopen(path, "w");
     if (!output)
         return -1;
 
@@ -478,6 +553,7 @@ int json_dump_file(const json_t *json, const char *path, size_t flags) {
         return -1;
 
     return result;
+#endif
 }
 
 int json_dump_callback(const json_t *json, json_dump_callback_t callback, void *data,

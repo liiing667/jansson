@@ -1249,6 +1249,15 @@ These functions output UTF-8:
    *path* already exists, it is overwritten. *flags* is described
    above. Returns 0 on success and -1 on error.
 
+   The document is first written to a temporary file in the same
+   directory as *path* and then atomically renamed into place. An
+   independent reader opening *path* therefore always observes a
+   complete file belonging to a single generation, never a truncated
+   or partially written file. If an error occurs before the rename,
+   any existing file at *path* is left untouched and the temporary
+   file is removed. On platforms without atomic rename support, the
+   file is overwritten directly instead.
+
 .. type:: json_dump_callback_t
 
    A typedef for a function that's called by

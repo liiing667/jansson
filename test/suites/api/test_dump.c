@@ -8,7 +8,9 @@
 #include "jansson_private_config.h"
 
 #include <jansson.h>
+#include <stdio.h>
 #include <string.h>
+#include <sys/stat.h>
 #ifdef HAVE_UNISTD_H
 #include <unistd.h>
 #endif
@@ -207,6 +209,8 @@ static void encode_nul_byte() {
 
 static void dump_file() {
     json_t *json;
+    json_t *other;
+    json_t *loaded;
     int result;
 
     result = json_dump_file(NULL, "", 0);
@@ -218,6 +222,55 @@ static void dump_file() {
     if (result != 0)
         fail("json_dump_file failed");
 
+    /* The dumped file can be loaded back and contains the new content. */
+    loaded = json_load_file("json_dump_file.json", 0, NULL);
+    if (!loaded || !json_equal(loaded, json))
+        fail("json_dump_file content could not be loaded back");
+    json_decref(loaded);
+
+    /* Rewriting publishes a new generation atomically: the destination ends
+     * up containing only the second document, and it lives in a fresh file
+     * (rename replaces the path instead of truncating it in place). */
+    other = json_pack("{s:s}", "generation", "second");
+    {
+        struct stat before, after;
+        if (stat("json_dump_file.json", &before) != 0)
+            fail("stat failed before rewrite");
+
+        result = json_dump_file(other, "json_dump_file.json", 0);
+        if (result != 0)
+            fail("json_dump_file failed when overwriting");
+
+        if (stat("json_dump_file.json", &after) != 0)
+            fail("stat failed after rewrite");
+
+        if (before.st_ino == after.st_ino)
+            fail("json_dump_file overwrote in place instead of replacing atomically");
+
+        loaded = json_load_file("json_dump_file.json", 0, NULL);
+        if (!loaded || !json_equal(loaded, other))
+            fail("json_dump_file did not publish the new generation");
+        json_decref(loaded);
+    }
+
+    /* A failed dump must leave the previously published file untouched and
+     * must not leave a temporary file behind. */
+    {
+        json_t *circular = json_array();
+        json_array_append_new(circular, circular);
+
+        result = json_dump_file(circular, "json_dump_file.json", JSON_ENCODE_ANY);
+        if (result != -1)
+            fail("json_dump_file succeeded for a circular reference");
+
+        loaded = json_load_file("json_dump_file.json", 0, NULL);
+        if (!loaded || !json_equal(loaded, other))
+            fail("failed json_dump_file modified the previously published file");
+        json_decref(loaded);
+        json_decref(circular);
+    }
+
+    json_decref(other);
     json_decref(json);
     remove("json_dump_file.json");
 }
