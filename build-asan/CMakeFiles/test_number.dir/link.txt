@@ -1,0 +1,1 @@
+/home/liiing/.local/toolchains/bin/gcc -fsanitize=address,undefined -fno-omit-frame-pointer -g -Wno-format-truncation -g -fsanitize=address,undefined -Wl,--dependency-file=CMakeFiles/test_number.dir/link.d CMakeFiles/test_number.dir/test/suites/api/test_number.c.o -o bin/test_number  lib/libjansson.a

@@ -1,0 +1,28 @@
+CMakeFiles/jansson.dir/src/utf.c.o: \
+ /home/liiing/feedback/uid39678/src/utf.c \
+ /home/liiing/.local/toolchains/x86_64-conda-linux-gnu/sysroot/usr/include/stdc-predef.h \
+ /home/liiing/feedback/uid39678/src/utf.h \
+ /home/liiing/feedback/uid39678/build-asan/private_include/jansson_private_config.h \
+ /home/liiing/.local/toolchains/lib/gcc/x86_64-conda-linux-gnu/16.2.0/include/stddef.h \
+ /home/liiing/.local/toolchains/lib/gcc/x86_64-conda-linux-gnu/16.2.0/include/stdint.h \
+ /home/liiing/.local/toolchains/x86_64-conda-linux-gnu/sysroot/usr/include/stdint.h \
+ /home/liiing/.local/toolchains/x86_64-conda-linux-gnu/sysroot/usr/include/bits/libc-header-start.h \
+ /home/liiing/.local/toolchains/x86_64-conda-linux-gnu/sysroot/usr/include/features.h \
+ /home/liiing/.local/toolchains/x86_64-conda-linux-gnu/sysroot/usr/include/features-time64.h \
+ /home/liiing/.local/toolchains/x86_64-conda-linux-gnu/sysroot/usr/include/bits/wordsize.h \
+ /home/liiing/.local/toolchains/x86_64-conda-linux-gnu/sysroot/usr/include/bits/timesize.h \
+ /home/liiing/.local/toolchains/x86_64-conda-linux-gnu/sysroot/usr/include/sys/cdefs.h \
+ /home/liiing/.local/toolchains/x86_64-conda-linux-gnu/sysroot/usr/include/bits/long-double.h \
+ /home/liiing/.local/toolchains/x86_64-conda-linux-gnu/sysroot/usr/include/gnu/stubs.h \
+ /home/liiing/.local/toolchains/x86_64-conda-linux-gnu/sysroot/usr/include/gnu/stubs-64.h \
+ /home/liiing/.local/toolchains/x86_64-conda-linux-gnu/sysroot/usr/include/bits/types.h \
+ /home/liiing/.local/toolchains/x86_64-conda-linux-gnu/sysroot/usr/include/bits/typesizes.h \
+ /home/liiing/.local/toolchains/x86_64-conda-linux-gnu/sysroot/usr/include/bits/time64.h \
+ /home/liiing/.local/toolchains/x86_64-conda-linux-gnu/sysroot/usr/include/bits/wchar.h \
+ /home/liiing/.local/toolchains/x86_64-conda-linux-gnu/sysroot/usr/include/bits/stdint-intn.h \
+ /home/liiing/.local/toolchains/x86_64-conda-linux-gnu/sysroot/usr/include/bits/stdint-uintn.h \
+ /home/liiing/.local/toolchains/x86_64-conda-linux-gnu/sysroot/usr/include/bits/stdint-least.h \
+ /home/liiing/.local/toolchains/x86_64-conda-linux-gnu/sysroot/usr/include/string.h \
+ /home/liiing/.local/toolchains/x86_64-conda-linux-gnu/sysroot/usr/include/bits/types/locale_t.h \
+ /home/liiing/.local/toolchains/x86_64-conda-linux-gnu/sysroot/usr/include/bits/types/__locale_t.h \
+ /home/liiing/.local/toolchains/x86_64-conda-linux-gnu/sysroot/usr/include/strings.h
